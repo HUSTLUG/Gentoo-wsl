@@ -29,7 +29,7 @@ The root-filesystem is built from the latest **stage3-amd64-openrc** snapshot, p
 
 ## Usage
 
-1. Download the latest release from [https://github.com/hlug-hust/gentoo-wsl/releases](https://github.com/hlug-hust/gentoo-wsl/releases).
+1. Download the latest release from [https://github.com/HUSTLUG/Gentoo-wsl/releases](https://github.com/HUSTLUG/Gentoo-wsl/releases).
 2. Run
 
    ```powershell
@@ -57,7 +57,7 @@ cd gentoo-wsl
 
 | Name                             | Role                | Contact                           |
 | -------------------------------- | ------------------- | --------------------------------- |
-| HLUG | Primary maintainers | [wsl@hlug.cn](mailto:wsl@hlug.cn) |
+| HLUG | Primary maintainers | [wsl@hlug.cn](mailto:feedback@hlug.cn) |
 
 We welcome issues & PRs from the community!
 
