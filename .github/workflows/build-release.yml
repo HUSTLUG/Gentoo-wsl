@@ -54,6 +54,17 @@ jobs:
       - name: Rename artefact with date tag
         run: |
           mv gentoo_*.wsl "gentoo_${{ steps.tag.outputs.tag }}.wsl"
+      # 5.1 计算 SHA-256，写入输出变量
+      - id: hash
+        run: |
+          HASH=$(sha256sum gentoo_${{ steps.tag.outputs.tag }}.wsl | awk '{print $1}')
+          echo "sha=$HASH" >> $GITHUB_OUTPUT
+
+      # 5.2 写入 .sha256 文件并供 Release 上传
+      - name: Create .sha256 file
+        run: |
+          echo "${{ steps.hash.outputs.sha }}  gentoo_${{ steps.tag.outputs.tag }}.wsl" \
+          > gentoo_${{ steps.tag.outputs.tag }}.sha256
 
       # 6. 生成 Changelog / Release notes（简要）
       - name: Create release
@@ -63,11 +74,19 @@ jobs:
           name: "Gentoo WSL (${{ steps.tag.outputs.tag }})"
           body: |
             Automated build for stage3 **${{ steps.tag.outputs.tag }}**  
+            
+            **SHA-256**
+
+            ```
+            ${{ steps.hash.outputs.sha }}
+            ```
             * Gentoo stage3-amd64-openrc snapshot  
             * Pre-installed sudo, OOBE user setup  
             * Built by GitHub Actions
           draft: false
-          files: gentoo_${{ steps.tag.outputs.tag }}.wsl
+          files: |
+            gentoo_${{ steps.tag.outputs.tag }}.wsl
+            gentoo_${{ steps.tag.outputs.tag }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
