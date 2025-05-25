@@ -1,0 +1,91 @@
+name: build-and-release-gentoo-wsl
+
+on:
+  schedule:
+    # 每天 03:30 UTC ≈ 北京时间 11:30，按需改动
+    - cron: '30 0 * * *'
+  workflow_dispatch:        # 手动触发
+  push:
+    paths:
+      - .github/workflows/build-release.yml
+      - build_gentoo_wsl.sh
+      - oobe.sh
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      API_URL: https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-openrc/latest-stage3-amd64-openrc.txt
+    steps:
+      # 1. 检出代码
+      - uses: actions/checkout@v4
+
+      # 2. 获取最新 stage3 文件名
+      - id: latest
+        run: |
+          LATEST=$(curl -s $API_URL | grep stage3 | awk '{print $1}')
+          echo "latest=$LATEST" >> $GITHUB_OUTPUT
+      - name: Derive tag name
+        id: tag
+        run: |
+          FILE="${{ steps.latest.outputs.latest }}"
+          # 提取日期字符串，如 20250530
+          TAG=$(echo "$FILE" | grep -oE '[0-9]{8}')
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      # 3. 判断 release 是否已存在；存在则跳过后续
+      - name: Check if release exists
+        run: |
+          gh release view "${{ steps.tag.outputs.tag }}" >/dev/null 2>&1 && \
+          { echo "Release exists, exiting."; exit 1; } || echo "No existing release."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 4. 准备依赖
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y xz-utils jq
+
+      # 5. 运行构建脚本
+      - name: Build .wsl package
+        run: |
+          chmod +x build_gentoo_wsl.sh
+          ./build_gentoo_wsl.sh
+          ls -lh *.wsl
+      - name: Rename artefact with date tag
+        run: |
+          mv gentoo_*.wsl "gentoo_${{ steps.tag.outputs.tag }}.wsl"
+
+      # 6. 生成 Changelog / Release notes（简要）
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "Gentoo rolling (${{
+            steps.tag.outputs.tag | tojson
+            }})"
+          body: |
+            Automated build for stage3 **${{ steps.tag.outputs.tag }}**  
+            * Gentoo stage3-amd64-openrc snapshot  
+            * Pre-installed sudo, OOBE user setup  
+            * Built by GitHub Actions
+          draft: false
+          files: gentoo_${{ steps.tag.outputs.tag }}.wsl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 7. 发送邮件通知
+      #- name: Send mail
+      #  if: success()
+      #  uses: dawidd6/action-send-mail@v3
+      #  with:
+      #    server_address: ${{ secrets.SMTP_SERVER }}
+      #    server_port: ${{ secrets.SMTP_PORT }}
+      #    username: ${{ secrets.SMTP_USERNAME }}
+      #    password: ${{ secrets.SMTP_PASSWORD }}
+      #    subject: "Gentoo WSL updated: ${{ steps.tag.outputs.tag }}"
+      #    to: ${{ secrets.TO_EMAIL }}
+      #    from: "WSL Bot <${{ secrets.FROM_EMAIL }}>"
+      #    body: |
+      #      New Gentoo stage3 detected: ${{ steps.latest.outputs.latest }}
+      #      A fresh .wsl package has been built and released:
+      #      https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.tag }}
