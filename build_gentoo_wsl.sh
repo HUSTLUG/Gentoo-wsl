@@ -68,10 +68,13 @@ cp -L /etc/resolv.conf "$ROOT/etc/"
 for mp in dev proc sys; do
     mount --bind "/$mp" "$ROOT/$mp"
 done
+mkdir -p "$ROOT/dev/pts"
+mount -t devpts devpts "$ROOT/dev/pts"
 
 # 5.3. 保证脚本异常时也能卸载
 cleanup() {
     echo "[*] 清理挂载 …"
+    umount -l "$ROOT/dev/pts" 2>/dev/null || true
     for mp in dev proc sys; do
         umount -l "$ROOT/$mp" 2>/dev/null || true
     done

@@ -60,7 +60,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          name: "Gentoo rolling (${{ steps.tag.outputs.tag }})"
+          name: "Gentoo WSL (${{ steps.tag.outputs.tag }})"
           body: |
             Automated build for stage3 **${{ steps.tag.outputs.tag }}**  
             * Gentoo stage3-amd64-openrc snapshot  
