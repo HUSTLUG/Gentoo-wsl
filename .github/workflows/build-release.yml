@@ -10,6 +10,7 @@ on:
       - .github/workflows/build-release.yml
       - build_gentoo_wsl.sh
       - oobe.sh
+      - gentoo-signet-128x128.ico
 
 jobs:
   build:
