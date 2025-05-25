@@ -49,7 +49,7 @@ jobs:
       - name: Build .wsl package
         run: |
           chmod +x build_gentoo_wsl.sh
-          ./build_gentoo_wsl.sh
+          sudo ./build_gentoo_wsl.sh
           ls -lh *.wsl
       - name: Rename artefact with date tag
         run: |
