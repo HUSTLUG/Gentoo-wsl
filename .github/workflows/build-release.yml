@@ -2,9 +2,9 @@ name: build-and-release-gentoo-wsl
 
 on:
   schedule:
-    # 每天 03:30 UTC ≈ 北京时间 11:30，按需改动
-    - cron: '30 0 * * *'
-  workflow_dispatch:        # 手动触发
+    # 每天 08:30 UTC ≈ 北京时间 16:30，可按需修改
+    - cron: '30 8 * * *'
+  workflow_dispatch:
   push:
     paths:
       - .github/workflows/build-release.yml
@@ -13,97 +13,84 @@ on:
       - gentoo-signet-128x128.ico
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
     env:
       API_URL: https://distfiles.gentoo.org/releases/amd64/autobuilds/current-stage3-amd64-openrc/latest-stage3-amd64-openrc.txt
+    outputs:
+      release_exists: ${{ steps.check_release.outputs.exists }}
+      tag: ${{ steps.tag.outputs.tag }}
+      latest: ${{ steps.latest.outputs.latest }}
     steps:
-      # 1. 检出代码
       - uses: actions/checkout@v4
 
-      # 2. 获取最新 stage3 文件名
       - id: latest
         run: |
           LATEST=$(curl -s $API_URL | grep stage3 | awk '{print $1}')
           echo "latest=$LATEST" >> $GITHUB_OUTPUT
-      - name: Derive tag name
-        id: tag
+
+      - id: tag
         run: |
           FILE="${{ steps.latest.outputs.latest }}"
-          # 提取日期字符串，如 20250530
           TAG=$(echo "$FILE" | grep -oE '[0-9]{8}')
           echo "tag=$TAG" >> $GITHUB_OUTPUT
 
-      # 3. 判断 release 是否已存在；存在则跳过后续
-      - name: Check if release exists
+      - id: check_release
         run: |
-          gh release view "${{ steps.tag.outputs.tag }}" >/dev/null 2>&1 && \
-          { echo "Release exists, exiting."; exit 1; } || echo "No existing release."
+          if gh release view "${{ steps.tag.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release already exists."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "No release yet. Will proceed."
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 4. 准备依赖
+  build:
+    needs: check
+    if: needs.check.outputs.release_exists == 'false'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
       - name: Install build deps
         run: sudo apt-get update && sudo apt-get install -y xz-utils jq
 
-      # 5. 运行构建脚本
       - name: Build .wsl package
         run: |
           chmod +x build_gentoo_wsl.sh
           sudo ./build_gentoo_wsl.sh
-          ls -lh *.wsl
-      - name: Rename artefact with date tag
+          mv gentoo_*.wsl gentoo_${TAG}.wsl
+
+      - name: Compute SHA
+        id: hash
         run: |
-          mv gentoo_*.wsl "gentoo_${{ steps.tag.outputs.tag }}.wsl"
-      # 5.1 计算 SHA-256，写入输出变量
-      - id: hash
-        run: |
-          HASH=$(sha256sum gentoo_${{ steps.tag.outputs.tag }}.wsl | awk '{print $1}')
+          HASH=$(sha256sum gentoo_${TAG}.wsl | awk '{print $1}')
           echo "sha=$HASH" >> $GITHUB_OUTPUT
 
-      # 5.2 写入 .sha256 文件并供 Release 上传
-      - name: Create .sha256 file
-        run: |
-          echo "${{ steps.hash.outputs.sha }}  gentoo_${{ steps.tag.outputs.tag }}.wsl" \
-          > gentoo_${{ steps.tag.outputs.tag }}.sha256
+      - name: Write .sha256
+        run: echo "${{ steps.hash.outputs.sha }}  gentoo_${TAG}.wsl" > gentoo_${TAG}.sha256
 
-      # 6. 生成 Changelog / Release notes（简要）
-      - name: Create release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.tag.outputs.tag }}
-          name: "Gentoo WSL (${{ steps.tag.outputs.tag }})"
+          tag_name: ${{ env.TAG }}
+          name: "Gentoo WSL (${{ env.TAG }})"
           body: |
-            Automated build for stage3 **${{ steps.tag.outputs.tag }}**  
-            
-            **SHA-256**
+            Automated build for stage3 **${{ env.TAG }}**
 
+            **SHA-256**
             ```
             ${{ steps.hash.outputs.sha }}
             ```
             * Gentoo stage3-amd64-openrc snapshot  
             * Pre-installed sudo, OOBE user setup  
             * Built by GitHub Actions
-          draft: false
           files: |
-            gentoo_${{ steps.tag.outputs.tag }}.wsl
-            gentoo_${{ steps.tag.outputs.tag }}.sha256
+            gentoo_${{ env.TAG }}.wsl
+            gentoo_${{ env.TAG }}.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 7. 发送邮件通知
-      #- name: Send mail
-      #  if: success()
-      #  uses: dawidd6/action-send-mail@v3
-      #  with:
-      #    server_address: ${{ secrets.SMTP_SERVER }}
-      #    server_port: ${{ secrets.SMTP_PORT }}
-      #    username: ${{ secrets.SMTP_USERNAME }}
-      #    password: ${{ secrets.SMTP_PASSWORD }}
-      #    subject: "Gentoo WSL updated: ${{ steps.tag.outputs.tag }}"
-      #    to: ${{ secrets.TO_EMAIL }}
-      #    from: "WSL Bot <${{ secrets.FROM_EMAIL }}>"
-      #    body: |
-      #      New Gentoo stage3 detected: ${{ steps.latest.outputs.latest }}
-      #      A fresh .wsl package has been built and released:
-      #      https://github.com/${{ github.repository }}/releases/tag/${{ steps.tag.outputs.tag }}
